@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { Plus, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useChatStore } from '@/lib/store/chat-store'
+import { submit } from '@/app/actions/chat'
 import {
   Sidebar,
   SidebarContent,
@@ -21,6 +22,7 @@ export default function ChatPage() {
   const { chats, activeChatId, addChat, setActiveChat, fetchChats } = useChatStore()
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [isCreatingChat, setIsCreatingChat] = useState(false)
+  const [input, setInput] = useState('')
 
   useEffect(() => {
     const initializeChats = async () => {
@@ -57,6 +59,19 @@ export default function ChatPage() {
 
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen)
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!input.trim()) return
+
+    const formData = new FormData()
+    formData.append('input', input)
+    
+    const result = await submit(formData)
+    console.log('Submit result:', result)
+    
+    setInput('')
   }
 
   return (
@@ -125,9 +140,11 @@ export default function ChatPage() {
                 {/* Chat messages will go here */}
               </div>
               <div className="mt-4 border-t border-white/10 pt-4">
-                <form className="flex gap-2">
+                <form onSubmit={handleSubmit} className="flex gap-2">
                   <input
                     type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
                     placeholder="Type your message..."
                     className="flex-1 bg-black/50 border border-white/10 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all duration-200"
                   />
