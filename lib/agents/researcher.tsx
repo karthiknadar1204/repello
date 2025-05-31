@@ -98,7 +98,7 @@ async function tavilySearch(
         max_results: maxResults < 5 ? 5 : maxResults,
         search_depth: searchDepth,
         include_images: true,
-        include_answers: true
+        include_answer: true
       })
     })
 

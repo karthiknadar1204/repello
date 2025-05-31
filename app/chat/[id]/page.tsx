@@ -42,12 +42,15 @@ export default function ChatPage() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [isCreatingChat, setIsCreatingChat] = useState(false)
   const [input, setInput] = useState('')
+  const [inquiryInput, setInquiryInput] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [streamedContent, setStreamedContent] = useState('')
   const [messageHistory, setMessageHistory] = useState<string>('[]')
   const [relatedQueries, setRelatedQueries] = useState<string[]>([])
   const [inquiryData, setInquiryData] = useState<InquiryData | null>(null)
+  const [searchData, setSearchData] = useState<any>(null)
+  const [selectedOptions, setSelectedOptions] = useState<InquiryOption[]>([])
 
   useEffect(() => {
     const initializeChats = async () => {
@@ -96,6 +99,7 @@ export default function ChatPage() {
     setIsLoading(true)
     setStreamedContent('')
     setRelatedQueries([])
+    setSearchData(null)
 
     const formData = new FormData()
     formData.append('input', input)
@@ -132,6 +136,8 @@ export default function ChatPage() {
             if (data.type === 'chunk') {
               setStreamedContent(prev => prev + data.content)
               fullResponse += data.content
+            } else if (data.type === 'search_data') {
+              setSearchData(data.content)
             } else if (data.type === 'complete') {
               setMessages(prev => [...prev, { role: 'assistant', content: fullResponse }])
               setMessageHistory(data.messageHistory)
@@ -216,21 +222,161 @@ export default function ChatPage() {
     }
   }
 
-  const handleInquiryOptionClick = async (option: InquiryOption) => {
-    if (inquiryData) {
-      const query = `${inquiryData.question} - ${option.label}`
-      await handleQueryClick(query)
-      setInquiryData(null)
+  const handleInquiryOptionClick = (option: InquiryOption) => {
+    setSelectedOptions(prev => {
+      const isSelected = prev.some(opt => opt.value === option.value)
+      if (isSelected) {
+        return prev.filter(opt => opt.value !== option.value)
+      } else {
+        return [...prev, option]
+      }
+    })
+  }
+
+  const handleInquirySubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (selectedOptions.length === 0 && !inquiryInput.trim()) return
+
+    const selectedValues = selectedOptions.map(opt => opt.value)
+    const customInput = inquiryInput.trim()
+    const combinedInput = customInput 
+      ? [...selectedValues, customInput].join(', ')
+      : selectedValues.join(', ')
+
+    const userMessage: Message = { role: 'user', content: combinedInput }
+    setMessages(prev => [...prev, userMessage])
+    setIsLoading(true)
+    setStreamedContent('')
+    setRelatedQueries([])
+    setSelectedOptions([])
+    setInquiryInput('')
+
+    const formData = new FormData()
+    formData.append('input', combinedInput)
+    formData.append('messageHistory', messageHistory)
+
+    try {
+      const response = await fetch('/api/chat/stream', {
+        method: 'POST',
+        body: formData
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to stream response')
+      }
+
+      const reader = response.body?.getReader()
+      if (!reader) {
+        throw new Error('No reader available')
+      }
+
+      let fullResponse = ''
+      const decoder = new TextDecoder()
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value)
+        const lines = chunk.split('\n').filter(line => line.trim())
+
+        for (const line of lines) {
+          try {
+            const data = JSON.parse(line)
+            if (data.type === 'chunk') {
+              setStreamedContent(prev => prev + data.content)
+              fullResponse += data.content
+            } else if (data.type === 'search_data') {
+              setSearchData(data.content)
+            } else if (data.type === 'complete') {
+              setMessages(prev => [...prev, { role: 'assistant', content: fullResponse }])
+              setMessageHistory(data.messageHistory)
+              setRelatedQueries(data.relatedQueries || [])
+              setIsLoading(false)
+              setStreamedContent('')
+              setInquiryData(null)
+            } else if (data.type === 'inquiry') {
+              setInquiryData(data)
+              setIsLoading(false)
+            }
+          } catch (error) {
+            console.error('Error parsing chunk:', error)
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error in chat:', error)
+      setIsLoading(false)
     }
   }
 
   const handleInquiryInput = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (inquiryData && input.trim()) {
-      const query = `${inquiryData.question} - ${input}`
-      await handleQueryClick(query)
-      setInquiryData(null)
-      setInput('')
+    if (!input.trim()) return
+
+    const userMessage: Message = { role: 'user', content: input }
+    setMessages(prev => [...prev, userMessage])
+    setIsLoading(true)
+    setStreamedContent('')
+    setRelatedQueries([])
+    setInquiryData(null)
+    setInput('')
+
+    const formData = new FormData()
+    formData.append('input', input)
+    formData.append('messageHistory', messageHistory)
+
+    try {
+      const response = await fetch('/api/chat/stream', {
+        method: 'POST',
+        body: formData
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to stream response')
+      }
+
+      const reader = response.body?.getReader()
+      if (!reader) {
+        throw new Error('No reader available')
+      }
+
+      let fullResponse = ''
+      const decoder = new TextDecoder()
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value)
+        const lines = chunk.split('\n').filter(line => line.trim())
+
+        for (const line of lines) {
+          try {
+            const data = JSON.parse(line)
+            if (data.type === 'chunk') {
+              setStreamedContent(prev => prev + data.content)
+              fullResponse += data.content
+            } else if (data.type === 'search_data') {
+              setSearchData(data.content)
+            } else if (data.type === 'complete') {
+              setMessages(prev => [...prev, { role: 'assistant', content: fullResponse }])
+              setMessageHistory(data.messageHistory)
+              setRelatedQueries(data.relatedQueries || [])
+              setIsLoading(false)
+              setStreamedContent('')
+            } else if (data.type === 'inquiry') {
+              setInquiryData(data)
+              setIsLoading(false)
+            }
+          } catch (error) {
+            console.error('Error parsing chunk:', error)
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error in chat:', error)
+      setIsLoading(false)
     }
   }
 
@@ -303,6 +449,7 @@ export default function ChatPage() {
                   streamedContent={streamedContent}
                   relatedQueries={relatedQueries}
                   onQueryClick={handleQueryClick}
+                  searchData={searchData}
                 />
                 {inquiryData && (
                   <div className="mt-4 p-4 rounded-lg border border-blue-500/20 bg-blue-500/5">
@@ -312,24 +459,29 @@ export default function ChatPage() {
                         <button
                           key={option.value}
                           onClick={() => handleInquiryOptionClick(option)}
-                          className="p-3 text-left rounded-lg border border-blue-500/20 hover:bg-blue-500/10 transition-colors duration-200"
+                          className={`p-3 text-left rounded-lg border transition-colors duration-200 ${
+                            selectedOptions.some(opt => opt.value === option.value)
+                              ? 'bg-blue-500/20 border-blue-500/40'
+                              : 'border-blue-500/20 hover:bg-blue-500/10'
+                          }`}
                         >
                           {option.label}
                         </button>
                       ))}
                     </div>
                     {inquiryData.allowsInput && (
-                      <form onSubmit={handleInquiryInput} className="flex gap-2">
+                      <form onSubmit={handleInquirySubmit} className="flex gap-2">
                         <input
                           type="text"
-                          value={input}
-                          onChange={(e) => setInput(e.target.value)}
+                          value={inquiryInput}
+                          onChange={(e) => setInquiryInput(e.target.value)}
                           placeholder={inquiryData.inputPlaceholder}
                           className="flex-1 bg-black/50 border border-white/10 rounded-lg px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all duration-200"
                         />
                         <button
                           type="submit"
-                          className="px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded-lg border border-blue-500/30 transition-colors duration-200"
+                          disabled={selectedOptions.length === 0 && !inquiryInput.trim()}
+                          className="px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded-lg border border-blue-500/30 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Submit
                         </button>

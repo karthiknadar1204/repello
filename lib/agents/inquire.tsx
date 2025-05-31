@@ -30,6 +30,8 @@ export async function inquire(messages: ChatCompletionMessageParam[]): Promise<I
           content: `As a professional web researcher, your role is to deepen your understanding of the user's input by conducting further inquiries when necessary.
           After receiving an initial response from the user, carefully assess whether additional questions are absolutely essential to provide a comprehensive and accurate answer. Only proceed with further inquiries if the available information is insufficient or ambiguous.
 
+          When the user provides multiple inputs (like selected options and custom text), treat them as a single coherent query and determine if you need more specific information about any aspect of their request.
+
           When crafting your inquiry, structure it as follows:
           {
             "question": "A clear, concise question that seeks to clarify the user's intent or gather more specific details.",
@@ -43,19 +45,19 @@ export async function inquire(messages: ChatCompletionMessageParam[]): Promise<I
             "inputPlaceholder": "A placeholder text to guide the user's free-form input"
           }
 
-          For example:
+          For example, if the user selects "technology" and adds "applied ai", you might ask:
           {
-            "question": "What specific information are you seeking about Rivian?",
+            "question": "What specific aspect of applied AI technology would you like to explore?",
             "options": [
-              {"value": "history", "label": "History"},
-              {"value": "products", "label": "Products"},
-              {"value": "investors", "label": "Investors"},
-              {"value": "partnerships", "label": "Partnerships"},
-              {"value": "competitors", "label": "Competitors"}
+              {"value": "applications", "label": "Real-world Applications"},
+              {"value": "trends", "label": "Current Trends"},
+              {"value": "challenges", "label": "Technical Challenges"},
+              {"value": "future", "label": "Future Developments"},
+              {"value": "impact", "label": "Industry Impact"}
             ],
             "allowsInput": true,
             "inputLabel": "If other, please specify",
-            "inputPlaceholder": "e.g., Specifications"
+            "inputPlaceholder": "e.g., Specific use cases, technologies"
           }
 
           By providing predefined options, you guide the user towards the most relevant aspects of their query, while the free-form input allows them to provide additional context or specific details not covered by the options.
@@ -117,7 +119,27 @@ export async function inquire(messages: ChatCompletionMessageParam[]): Promise<I
       return args as Inquiry
     }
 
-    throw new Error('No inquiry generated')
+    // If no function call, try to parse the content as JSON
+    const content = result.choices[0].message.content
+    if (content) {
+      try {
+        const parsedContent = JSON.parse(content)
+        if (parsedContent.question && Array.isArray(parsedContent.options)) {
+          return parsedContent as Inquiry
+        }
+      } catch (error) {
+        console.error('Error parsing content as JSON:', error)
+      }
+    }
+
+    // If all else fails, return a default inquiry
+    return {
+      question: 'Could you please provide more details about your query?',
+      options: [],
+      allowsInput: true,
+      inputLabel: 'Your response',
+      inputPlaceholder: 'Please provide more details...'
+    }
   } catch (error) {
     console.error('Error in inquire:', error)
     return {
