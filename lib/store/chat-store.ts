@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { createNewChat } from '@/app/actions/chat'
+import { createNewChat, getUserChats } from '@/app/actions/chat'
 
 export interface Chat {
   id: string
@@ -12,6 +12,7 @@ interface ChatStore {
   activeChatId: string | null
   addChat: () => Promise<string | null>
   setActiveChat: (id: string) => void
+  fetchChats: () => Promise<void>
 }
 
 export const useChatStore = create<ChatStore>((set) => ({
@@ -39,4 +40,19 @@ export const useChatStore = create<ChatStore>((set) => ({
     }
   },
   setActiveChat: (id: string) => set({ activeChatId: id }),
+  fetchChats: async () => {
+    try {
+      const result = await getUserChats()
+      if (result.success && result.chats) {
+        const formattedChats: Chat[] = result.chats.map(chat => ({
+          id: chat.id,
+          name: chat.name,
+          createdAt: new Date(chat.created_at),
+        }))
+        set({ chats: formattedChats })
+      }
+    } catch (error) {
+      console.error('Error fetching chats:', error)
+    }
+  },
 })) 
