@@ -5,9 +5,23 @@ import { Brain, Menu, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { UserButton, SignInButton, SignUpButton, SignedIn, SignedOut } from "@clerk/nextjs"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
+import { useChatStore } from "@/lib/store/chat-store"
 
 export function Navigation() {
   const [isOpen, setIsOpen] = useState(false)
+  const router = useRouter()
+  const { addChat } = useChatStore()
+
+  const handleDashboardClick = async (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    addChat()
+    const newChatId = useChatStore.getState().chats[0]?.id
+    if (newChatId) {
+      await router.push(`/chat/${newChatId}`)
+    }
+  }
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-black/80 backdrop-blur-md border-b border-white/10">
@@ -19,7 +33,7 @@ export function Navigation() {
             </Link>
           </div>
           <div className="flex items-center gap-4">
-            <Link href="/dashboard" className="text-white hover:text-gray-300">
+            <Link href="#" onClick={handleDashboardClick} className="text-white hover:text-gray-300">
               Dashboard
             </Link>
             <SignedOut>
