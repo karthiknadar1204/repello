@@ -16,10 +16,9 @@ export function Navigation() {
   const handleDashboardClick = async (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    addChat()
-    const newChatId = useChatStore.getState().chats[0]?.id
+    const newChatId = await addChat()
     if (newChatId) {
-      await router.push(`/chat/${newChatId}`)
+      router.push(`/chat/${newChatId}`)
     }
   }
 

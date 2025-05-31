@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { v4 as uuidv4 } from 'uuid'
+import { createNewChat } from '@/app/actions/chat'
 
 export interface Chat {
   id: string
@@ -10,23 +10,33 @@ export interface Chat {
 interface ChatStore {
   chats: Chat[]
   activeChatId: string | null
-  addChat: () => void
+  addChat: () => Promise<string | null>
   setActiveChat: (id: string) => void
 }
 
 export const useChatStore = create<ChatStore>((set) => ({
   chats: [],
   activeChatId: null,
-  addChat: () => {
-    const newChat: Chat = {
-      id: uuidv4(),
-      name: 'New Conversation',
-      createdAt: new Date(),
+  addChat: async () => {
+    try {
+      const result = await createNewChat()
+      if (result.success && result.chat) {
+        const newChat: Chat = {
+          id: result.chat.id,
+          name: result.chat.name,
+          createdAt: new Date(result.chat.created_at),
+        }
+        set((state) => ({
+          chats: [...state.chats, newChat],
+          activeChatId: newChat.id,
+        }))
+        return newChat.id
+      }
+      return null
+    } catch (error) {
+      console.error('Error adding chat:', error)
+      return null
     }
-    set((state) => ({
-      chats: [...state.chats, newChat],
-      activeChatId: newChat.id,
-    }))
   },
   setActiveChat: (id: string) => set({ activeChatId: id }),
 })) 

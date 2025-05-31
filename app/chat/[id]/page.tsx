@@ -20,6 +20,7 @@ export default function ChatPage() {
   const chatId = params?.id as string
   const { chats, activeChatId, addChat, setActiveChat } = useChatStore()
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
+  const [isCreatingChat, setIsCreatingChat] = useState(false)
 
   useEffect(() => {
     if (chats.length === 0) {
@@ -31,11 +32,17 @@ export default function ChatPage() {
     }
   }, [chatId])
 
-  const handleNewChat = () => {
-    addChat()
-    const newChatId = chats[chats.length - 1]?.id
-    if (newChatId) {
-      router.push(`/chat/${newChatId}`)
+  const handleNewChat = async () => {
+    try {
+      setIsCreatingChat(true)
+      const newChatId = await addChat()
+      if (newChatId) {
+        router.push(`/chat/${newChatId}`)
+      }
+    } catch (error) {
+      console.error('Error creating new chat:', error)
+    } finally {
+      setIsCreatingChat(false)
     }
   }
 
@@ -56,10 +63,13 @@ export default function ChatPage() {
             <SidebarHeader className="p-4">
               <button
                 onClick={handleNewChat}
-                className="flex w-full items-center gap-2 rounded-md p-2 text-sm bg-blue-500/10 hover:bg-blue-500/20 transition-colors duration-200 border border-blue-500/20"
+                disabled={isCreatingChat}
+                className="flex w-full items-center gap-2 rounded-md p-2 text-sm bg-blue-500/10 hover:bg-blue-500/20 transition-colors duration-200 border border-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Plus className="h-4 w-4 text-blue-400" />
-                <span className="text-gray-200">New Chat</span>
+                <span className="text-gray-200">
+                  {isCreatingChat ? 'Creating...' : 'New Chat'}
+                </span>
               </button>
             </SidebarHeader>
             <SidebarContent className="p-2">
