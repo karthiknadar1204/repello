@@ -4,7 +4,7 @@ import { db } from '@/configs/db'
 import { chats, users } from '@/configs/schema'
 import { currentUser } from '@clerk/nextjs/server'
 import { eq } from 'drizzle-orm'
-import { taskManager, researcher, querySuggestor } from '@/lib/agents'
+import { taskManager, researcher, querySuggestor, inquire } from '@/lib/agents'
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 
 export async function createNewChat() {
@@ -72,48 +72,65 @@ export async function submit(formData?: FormData, skip?: boolean) {
   const userInput = skip ? `{"action": "skip"}` : (formData?.get('input') as string)
   const content = skip ? userInput : formData ? JSON.stringify(Object.fromEntries(formData)) : null
 
+
+  const messageHistory = formData?.get('messageHistory') as string
+  let previousMessages: ChatCompletionMessageParam[] = []
+  if (messageHistory) {
+    try {
+      previousMessages = JSON.parse(messageHistory)
+    } catch (error) {
+      console.error('Error parsing message history:', error)
+    }
+  }
+
   if (content) {
     const message: ChatCompletionMessageParam = { role: 'user', content }
     messages.push(message)
   }
 
 
-  async function processEvents() {
+  const allMessages = [...previousMessages, ...messages]
 
+  async function processEvents() {
     let action: any = { object: { next: 'proceed' } }
     if (!skip) {
-      action = await taskManager(messages)
+      action = await taskManager(allMessages)
     }
-
 
     if (action.object.next === 'inquire') {
       console.log("Inquire agent was triggered")
-
+      const inquiry = await inquire(allMessages)
+      console.log("Inquire agent output:", JSON.stringify(inquiry, null, 2))
       return {
         type: 'inquiry',
-        question: "Sample question" 
+        ...inquiry
       }
     }
 
-
     let answer = ''
     while (answer.length === 0) {
-      const { fullResponse } = await researcher(null, null, messages)
+      const { fullResponse } = await researcher(null, null, allMessages)
       console.log("Researcher agent was triggered")
       answer = fullResponse
       console.log("Researcher agent response:", answer)
     }
 
-
     console.log("Query suggestor agent was triggered")
-    const relatedQueries = await querySuggestor(null, messages)
+    const relatedQueries = await querySuggestor(null, allMessages)
     console.log("Query suggestor response:", relatedQueries)
-    
+
+
+    const updatedHistory = [
+      ...previousMessages,
+      { role: 'user', content },
+      { role: 'assistant', content: answer }
+    ].slice(-4) 
 
     return {
       type: 'response',
       content: answer,
-      relatedQueries
+      relatedQueries,
+      messageHistory: JSON.stringify(updatedHistory)
     }
   }
 
