@@ -72,7 +72,6 @@ export async function submit(formData?: FormData, skip?: boolean) {
   const userInput = skip ? `{"action": "skip"}` : (formData?.get('input') as string)
   const content = skip ? userInput : formData ? JSON.stringify(Object.fromEntries(formData)) : null
 
-
   const messageHistory = formData?.get('messageHistory') as string
   let previousMessages: ChatCompletionMessageParam[] = []
   if (messageHistory) {
@@ -87,7 +86,6 @@ export async function submit(formData?: FormData, skip?: boolean) {
     const message: ChatCompletionMessageParam = { role: 'user', content }
     messages.push(message)
   }
-
 
   const allMessages = [...previousMessages, ...messages]
 
@@ -119,12 +117,11 @@ export async function submit(formData?: FormData, skip?: boolean) {
     const relatedQueries = await querySuggestor(null, allMessages)
     console.log("Query suggestor response:", relatedQueries)
 
-
     const updatedHistory = [
       ...previousMessages,
       { role: 'user', content },
       { role: 'assistant', content: answer }
-    ].slice(-4) 
+    ].slice(-4)
 
     return {
       type: 'response',
@@ -136,4 +133,78 @@ export async function submit(formData?: FormData, skip?: boolean) {
 
   const result = await processEvents()
   return result
+}
+
+export async function* streamSubmit(formData?: FormData, skip?: boolean) {
+  const messages: ChatCompletionMessageParam[] = []
+  const userInput = skip ? `{"action": "skip"}` : (formData?.get('input') as string)
+  const content = skip ? userInput : formData ? JSON.stringify(Object.fromEntries(formData)) : null
+
+  const messageHistory = formData?.get('messageHistory') as string
+  let previousMessages: ChatCompletionMessageParam[] = []
+  if (messageHistory) {
+    try {
+      previousMessages = JSON.parse(messageHistory)
+    } catch (error) {
+      console.error('Error parsing message history:', error)
+    }
+  }
+
+  if (content) {
+    const message: ChatCompletionMessageParam = { role: 'user', content }
+    messages.push(message)
+  }
+
+  const allMessages = [...previousMessages, ...messages]
+
+  let action: any = { object: { next: 'proceed' } }
+  if (!skip) {
+    action = await taskManager(allMessages)
+  }
+
+  if (action.object.next === 'inquire') {
+    console.log("Inquire agent was triggered")
+    const inquiry = await inquire(allMessages)
+    console.log("Inquire agent output:", JSON.stringify(inquiry, null, 2))
+    yield {
+      type: 'inquiry',
+      ...inquiry
+    }
+    return
+  }
+
+  let answer = ''
+  while (answer.length === 0) {
+    const { fullResponse } = await researcher(null, null, allMessages)
+    console.log("Researcher agent was triggered")
+    answer = fullResponse
+    console.log("Researcher agent response:", answer)
+    
+    // Stream the response in chunks
+    const chunks = answer.split(/(?<=[.!?])\s+/)
+    for (const chunk of chunks) {
+      yield {
+        type: 'chunk',
+        content: chunk + ' '
+      }
+      await new Promise(resolve => setTimeout(resolve, 50)) // Add a small delay between chunks
+    }
+  }
+
+  console.log("Query suggestor agent was triggered")
+  const relatedQueries = await querySuggestor(null, allMessages)
+  console.log("Query suggestor response:", relatedQueries)
+
+  const updatedHistory = [
+    ...previousMessages,
+    { role: 'user', content },
+    { role: 'assistant', content: answer }
+  ].slice(-4)
+
+  yield {
+    type: 'complete',
+    content: answer,
+    relatedQueries,
+    messageHistory: JSON.stringify(updatedHistory)
+  }
 } 

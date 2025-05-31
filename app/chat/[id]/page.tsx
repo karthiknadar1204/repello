@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { Plus, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useChatStore } from '@/lib/store/chat-store'
-import { submit } from '@/app/actions/chat'
+import { submit, streamSubmit } from '@/app/actions/chat'
+import { ChatMessages } from '@/components/chat/chat-messages'
 import {
   Sidebar,
   SidebarContent,
@@ -15,6 +16,24 @@ import {
   SidebarProvider,
 } from '@/components/ui/sidebar'
 
+interface Message {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+interface InquiryOption {
+  value: string
+  label: string
+}
+
+interface InquiryData {
+  question: string
+  options: InquiryOption[]
+  allowsInput: boolean
+  inputLabel?: string
+  inputPlaceholder?: string
+}
+
 export default function ChatPage() {
   const router = useRouter()
   const params = useParams()
@@ -23,6 +42,12 @@ export default function ChatPage() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [isCreatingChat, setIsCreatingChat] = useState(false)
   const [input, setInput] = useState('')
+  const [messages, setMessages] = useState<Message[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [streamedContent, setStreamedContent] = useState('')
+  const [messageHistory, setMessageHistory] = useState<string>('[]')
+  const [relatedQueries, setRelatedQueries] = useState<string[]>([])
+  const [inquiryData, setInquiryData] = useState<InquiryData | null>(null)
 
   useEffect(() => {
     const initializeChats = async () => {
@@ -65,13 +90,148 @@ export default function ChatPage() {
     e.preventDefault()
     if (!input.trim()) return
 
+    const userMessage: Message = { role: 'user', content: input }
+    setMessages(prev => [...prev, userMessage])
+    setInput('')
+    setIsLoading(true)
+    setStreamedContent('')
+    setRelatedQueries([])
+
     const formData = new FormData()
     formData.append('input', input)
-    
-    const result = await submit(formData)
-    console.log('Submit result:', result)
-    
-    setInput('')
+    formData.append('messageHistory', messageHistory)
+
+    try {
+      const response = await fetch('/api/chat/stream', {
+        method: 'POST',
+        body: formData
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to stream response')
+      }
+
+      const reader = response.body?.getReader()
+      if (!reader) {
+        throw new Error('No reader available')
+      }
+
+      let fullResponse = ''
+      const decoder = new TextDecoder()
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value)
+        const lines = chunk.split('\n').filter(line => line.trim())
+
+        for (const line of lines) {
+          try {
+            const data = JSON.parse(line)
+            if (data.type === 'chunk') {
+              setStreamedContent(prev => prev + data.content)
+              fullResponse += data.content
+            } else if (data.type === 'complete') {
+              setMessages(prev => [...prev, { role: 'assistant', content: fullResponse }])
+              setMessageHistory(data.messageHistory)
+              setRelatedQueries(data.relatedQueries || [])
+              setIsLoading(false)
+              setStreamedContent('')
+            } else if (data.type === 'inquiry') {
+              setInquiryData(data)
+              setIsLoading(false)
+            }
+          } catch (error) {
+            console.error('Error parsing chunk:', error)
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error in chat:', error)
+      setIsLoading(false)
+    }
+  }
+
+  const handleQueryClick = async (query: string) => {
+    const userMessage: Message = { role: 'user', content: query }
+    setMessages(prev => [...prev, userMessage])
+    setIsLoading(true)
+    setStreamedContent('')
+    setRelatedQueries([])
+
+    const formData = new FormData()
+    formData.append('input', query)
+    formData.append('messageHistory', messageHistory)
+
+    try {
+      const response = await fetch('/api/chat/stream', {
+        method: 'POST',
+        body: formData
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to stream response')
+      }
+
+      const reader = response.body?.getReader()
+      if (!reader) {
+        throw new Error('No reader available')
+      }
+
+      let fullResponse = ''
+      const decoder = new TextDecoder()
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value)
+        const lines = chunk.split('\n').filter(line => line.trim())
+
+        for (const line of lines) {
+          try {
+            const data = JSON.parse(line)
+            if (data.type === 'chunk') {
+              setStreamedContent(prev => prev + data.content)
+              fullResponse += data.content
+            } else if (data.type === 'complete') {
+              setMessages(prev => [...prev, { role: 'assistant', content: fullResponse }])
+              setMessageHistory(data.messageHistory)
+              setRelatedQueries(data.relatedQueries || [])
+              setIsLoading(false)
+              setStreamedContent('')
+            } else if (data.type === 'inquiry') {
+              setInquiryData(data)
+              setIsLoading(false)
+            }
+          } catch (error) {
+            console.error('Error parsing chunk:', error)
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error in chat:', error)
+      setIsLoading(false)
+    }
+  }
+
+  const handleInquiryOptionClick = async (option: InquiryOption) => {
+    if (inquiryData) {
+      const query = `${inquiryData.question} - ${option.label}`
+      await handleQueryClick(query)
+      setInquiryData(null)
+    }
+  }
+
+  const handleInquiryInput = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (inquiryData && input.trim()) {
+      const query = `${inquiryData.question} - ${input}`
+      await handleQueryClick(query)
+      setInquiryData(null)
+      setInput('')
+    }
   }
 
   return (
@@ -137,7 +297,46 @@ export default function ChatPage() {
             </h1>
             <div className="rounded-lg border border-white/10 bg-black/50 backdrop-blur-sm p-6 h-[calc(100%-6rem)] flex flex-col">
               <div className="flex-1 overflow-y-auto">
-                {/* Chat messages will go here */}
+                <ChatMessages
+                  messages={messages}
+                  isLoading={isLoading}
+                  streamedContent={streamedContent}
+                  relatedQueries={relatedQueries}
+                  onQueryClick={handleQueryClick}
+                />
+                {inquiryData && (
+                  <div className="mt-4 p-4 rounded-lg border border-blue-500/20 bg-blue-500/5">
+                    <h3 className="text-lg font-medium text-blue-400 mb-3">{inquiryData.question}</h3>
+                    <div className="grid grid-cols-2 gap-2 mb-4">
+                      {inquiryData.options.map((option) => (
+                        <button
+                          key={option.value}
+                          onClick={() => handleInquiryOptionClick(option)}
+                          className="p-3 text-left rounded-lg border border-blue-500/20 hover:bg-blue-500/10 transition-colors duration-200"
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                    {inquiryData.allowsInput && (
+                      <form onSubmit={handleInquiryInput} className="flex gap-2">
+                        <input
+                          type="text"
+                          value={input}
+                          onChange={(e) => setInput(e.target.value)}
+                          placeholder={inquiryData.inputPlaceholder}
+                          className="flex-1 bg-black/50 border border-white/10 rounded-lg px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all duration-200"
+                        />
+                        <button
+                          type="submit"
+                          className="px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded-lg border border-blue-500/30 transition-colors duration-200"
+                        >
+                          Submit
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="mt-4 border-t border-white/10 pt-4">
                 <form onSubmit={handleSubmit} className="flex gap-2">
@@ -150,9 +349,10 @@ export default function ChatPage() {
                   />
                   <button
                     type="submit"
-                    className="px-4 py-3 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded-lg border border-blue-500/30 transition-colors duration-200 flex items-center gap-2"
+                    disabled={isLoading}
+                    className="px-4 py-3 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded-lg border border-blue-500/30 transition-colors duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <span>Send</span>
+                    <span>{isLoading ? 'Sending...' : 'Send'}</span>
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
                       viewBox="0 0 20 20"
