@@ -51,8 +51,8 @@ export function ChatMessages({
   searchData
 }: ChatMessagesProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
-
   const [expandedSources, setExpandedSources] = useState<{ [key: number]: boolean }>({})
+  const [expandedImage, setExpandedImage] = useState<string | null>(null)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -175,7 +175,8 @@ export function ChatMessages({
                           key={idx}
                           src={image}
                           alt={`Search result image ${idx + 1}`}
-                          className="w-32 h-32 object-cover rounded-lg"
+                          className="w-32 h-32 object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                          onClick={() => setExpandedImage(image)}
                         />
                       ))}
                     </div>
@@ -231,6 +232,30 @@ export function ChatMessages({
         </div>
       )}
       <div ref={messagesEndRef} />
+
+      {/* Image Expansion Modal */}
+      {expandedImage && (
+        <div 
+          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4"
+          onClick={() => setExpandedImage(null)}
+        >
+          <div className="relative max-w-[90vw] max-h-[90vh]">
+            <img
+              src={expandedImage}
+              alt="Expanded image"
+              className="max-w-full max-h-[90vh] object-contain rounded-lg"
+            />
+            <button
+              className="absolute top-4 right-4 text-white bg-black/50 rounded-full p-2 hover:bg-black/70 transition-colors"
+              onClick={() => setExpandedImage(null)}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 } 
