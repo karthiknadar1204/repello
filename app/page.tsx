@@ -1,9 +1,71 @@
+'use client'
+
 import Image from "next/image";
+import { useUser } from "@clerk/nextjs";
+import { useEffect, useState } from "react";
+import { checkAndStoreUser } from "./actions/auth";
 
 export default function Home() {
+  const { user, isLoaded } = useUser();
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const checkUser = async () => {
+      if (isLoaded && user) {
+        console.log("User data:", user);
+        try {
+          const result = await checkAndStoreUser({
+            id: user.id,
+            firstName: user.firstName || "",
+            lastName: user.lastName || "",
+            email: user.emailAddresses[0]?.emailAddress || "",
+            imageUrl: user.imageUrl,
+          });
+          console.log("Server action result:", result);
+          if (!result.success) {
+            setError(result.message);
+          }
+        } catch (err) {
+          console.error("Error in checkUser:", err);
+          setError("Failed to process user data");
+        }
+      }
+    };
+    
+    checkUser();
+  }, [isLoaded, user]);
+
   return (
     <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
       <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
+        {error && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+            <strong className="font-bold">Error: </strong>
+            <span className="block sm:inline">{error}</span>
+          </div>
+        )}
+        {user ? (
+          <div className="flex flex-col items-center gap-4">
+            <h1 className="text-2xl font-bold">Welcome, {user.firstName}!</h1>
+            {user.imageUrl ? (
+              <img
+                src={user.imageUrl}
+                alt="Profile"
+                width={100}
+                height={100}
+                className="rounded-full"
+              />
+            ) : (
+              <div className="w-[100px] h-[100px] rounded-full bg-gray-200 flex items-center justify-center">
+                <span className="text-2xl text-gray-500">
+                  {user.firstName?.[0]?.toUpperCase() || 'U'}
+                </span>
+              </div>
+            )}
+          </div>
+        ) : (
+          <h1 className="text-2xl font-bold">Welcome to Repello</h1>
+        )}
         <Image
           className="dark:invert"
           src="/next.svg"
